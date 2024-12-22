@@ -41,6 +41,7 @@ int main()
         std::cout << "Mismatch found in sequence " << errSeq << " at " <<  errIdx << std::endl;
     else std::cout << "All cigars match" << std::endl;
 
+    // DONT FORGET TO FREE DIRECTIONMATRX/TENSOR DYNAMIC MEMORY (after optimizations ofc)
 	delete[] h_query[0];
 	delete[] h_query;
 	delete[] h_reference[0];
