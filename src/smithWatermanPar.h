@@ -31,8 +31,8 @@
 #define S_LEN 512
 #define N 1000
 
-#define NUM_THREADS 512
-#define NUM_BLOCKS 1000
+#define NUM_THREADS S_LEN
+#define NUM_BLOCKS N
 #define MATCH 1
 #define MISMATCH -1
 #define DEL -2
@@ -52,6 +52,8 @@ __host__ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int
 //device only functions
 
 __device__ __forceinline__ int mapToElement(int tid, int iteration);
+__device__ __forceinline__ int mapToQueryIndex(int tid, int iteration);
+__device__ __forceinline__ int mapToReferenceIndex(int tid, int iteration);
 __device__ __forceinline__ int leftNeighbor(int index);
 __device__ __forceinline__ int upNeighbor(int index);
 __device__ __forceinline__ int upLeftNeighbor(int index);

@@ -3,7 +3,7 @@
 __global__ void smithWatermanKernel(
     char* d_query, 
     char* d_reference, 
-    u_int32_t *d_score_tensor, 
+    int32_t *d_score_tensor, 
     u_int16_t *d_direction_tensor
     )
 {
@@ -18,7 +18,7 @@ __global__ void smithWatermanKernel(
             index = mapToElement(tid, iteration) + blockIdx.x * (S_LEN+1) * (S_LEN+1);
             //compute the algorithm given the neighbors
 
-            comparison = (d_query[getActiveThreads(iteration) - tid + S_LEN * blockIdx.x] == d_reference[tid + S_LEN * blockIdx.x]) ? MATCH : MISMATCH;
+            comparison = ((d_query[mapToQueryIndex(tid, iteration) + S_LEN * blockIdx.x] == d_reference[mapToReferenceIndex(tid, iteration) + S_LEN * blockIdx.x]) ? MATCH : MISMATCH);
             tmp = max4(
                 d_score_tensor[upLeftNeighbor(index)] + comparison, 
                 d_score_tensor[upNeighbor(index)] + DEL,
@@ -28,9 +28,9 @@ __global__ void smithWatermanKernel(
 
             if (tmp == (d_score_tensor[upLeftNeighbor(index)] + comparison))
                 d_direction_tensor[index] = (comparison == MATCH) ? 1 : 2;
-            else if (tmp == (d_score_tensor[upNeighbor(index)] + comparison))
+            else if (tmp == (d_score_tensor[upNeighbor(index)] + DEL))
                 d_direction_tensor[index] = 3;
-            else if (tmp == (d_score_tensor[leftNeighbor(index)] + comparison))
+            else if (tmp == (d_score_tensor[leftNeighbor(index)] + INS))
                 d_direction_tensor[index] = 4;
             else
                 d_direction_tensor[index] = 0;
@@ -43,27 +43,26 @@ __global__ void smithWatermanKernel(
 
 u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **cigar)
 {
-    u_int32_t ***h_score_tensor;
     u_int16_t ***h_direction_tensor;
+    int32_t ***h_score_tensor;
 
-    allocateTensor(h_score_tensor, N, S_LEN + 1, S_LEN + 1);
     allocateTensor(h_direction_tensor, N, S_LEN + 1, S_LEN + 1);
-
+    allocateTensor(h_score_tensor, N, S_LEN+1, S_LEN+1);
 
     char *d_query;
     char *d_reference;
-    u_int32_t *d_score_tensor;
+    int32_t *d_score_tensor;
     u_int16_t *d_direction_tensor;
 
     CUDA_CHECK(cudaMalloc(&d_query, N*S_LEN*sizeof(char))); // 512 KB
     CUDA_CHECK(cudaMalloc(&d_reference, N*S_LEN*sizeof(char))); // 512 KB
     //Tensors to store all score/direction matrices at once
-    CUDA_CHECK(cudaMalloc(&d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t))); // 1.052 GB
+    CUDA_CHECK(cudaMalloc(&d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(int32_t))); // 1.052 GB
     CUDA_CHECK(cudaMalloc(&d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t))); // 263 MB -> tot 1.365 GB
 
-    CUDA_CHECK(cudaMemcpy(d_query, h_query, N*S_LEN*sizeof(char), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_reference, h_reference, N*S_LEN*sizeof(char), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemset(d_score_tensor, 0, N * (S_LEN + 1) * (S_LEN + 1) * sizeof(u_int32_t)));
+    CUDA_CHECK(cudaMemcpy(d_query, h_query[0], N*S_LEN*sizeof(char), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_reference, h_reference[0], N*S_LEN*sizeof(char), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemset(d_score_tensor, 0, N * (S_LEN + 1) * (S_LEN + 1) * sizeof(int32_t))); // problem if N > 1
     CUDA_CHECK(cudaMemset(d_direction_tensor, 0, N * (S_LEN + 1) * (S_LEN + 1) * sizeof(u_int16_t)));
 
     dim3 threadsPerBlock(NUM_THREADS, 1, 1);
@@ -77,12 +76,13 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
     CUDA_KERNEL_CHECK();
 
     CUDA_CHECK(cudaMemcpy(h_direction_tensor[0][0], d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_score_tensor[0][0], d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(int32_t), cudaMemcpyDeviceToHost));
 
     int maxRow, maxCol;
     for (int i = 0; i < N; i++)
     {
-        std::tie(maxRow, maxCol) = maxElement(h_direction_tensor[i]);
-        //backtraceP(cigar[i], h_direction_tensor[i], maxRow, maxCol, S_LEN*2);
+        std::tie(maxRow, maxCol) = maxElement(h_score_tensor[i]);
+        backtraceP(cigar[i], h_direction_tensor[i], maxRow, maxCol, S_LEN*2);
     }
 
     //CLEANUP
@@ -93,8 +93,6 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
 
     //delete[] h_direction_tensor[0];
     //delete[] h_direction_tensor;
-    delete[] h_score_tensor[0];
-    delete[] h_score_tensor;
 
     return h_direction_tensor;
 }
@@ -113,26 +111,24 @@ __host__ void allocateMatrix(T**& matrix, int rows, int cols)
 template <typename T>
 __host__ void allocateTensor(T***& tensor, int depth, int rows, int cols)
 {
+    // Allocate memory for the depth pointers
     tensor = new T**[depth];
-    tensor[0] = new T*[depth * rows];
-    tensor[0][0] = new T[depth * rows * cols];
-
+    
+    // Allocate memory for the row pointers for all depths
     for (int d = 0; d < depth; ++d)
     {
-        if (d > 0)
-        {
-            tensor[d] = tensor[d - 1] + rows;
-        }
+        tensor[d] = new T*[rows];
+    }
+    
+    // Allocate memory for all elements in a single contiguous block
+    T* dataBlock = new T[depth * rows * cols];
+
+    // Set the pointers for each depth and row
+    for (int d = 0; d < depth; ++d)
+    {
         for (int r = 0; r < rows; ++r)
         {
-            if (d == 0 && r > 0)
-            {
-                tensor[0][r] = tensor[0][r - 1] + cols;
-            }
-            else if (d > 0)
-            {
-                tensor[d][r] = tensor[d - 1][r] + cols;
-            }
+            tensor[d][r] = dataBlock + (d * rows * cols) + (r * cols);
         }
     }
 }
@@ -185,6 +181,16 @@ __device__ __forceinline__ int mapToElement(int tid, int iteration)
     return (iteration <= S_LEN) ? tid + 1 + (S_LEN + 1) * (iteration - tid) : (S_LEN - tid) * (S_LEN + 1) + iteration - S_LEN + tid + 1;
 }
 
+__device__ __forceinline__ int mapToQueryIndex(int tid, int iteration)
+{
+    return ((iteration <= S_LEN) ? getActiveThreads(iteration) - tid - 1 : S_LEN - tid - 1);
+}
+
+__device__ __forceinline__ int mapToReferenceIndex(int tid, int iteration)
+{
+    return ((iteration <= S_LEN) ? tid : tid + iteration - S_LEN);
+}
+
 __device__ __forceinline__ int leftNeighbor(int index)
 {
     return index - 1;
@@ -208,14 +214,11 @@ __device__ __forceinline__ int getActiveThreads(int iteration)
     return (iteration <= S_LEN) ? iteration : 2 * S_LEN - iteration;
 }
 
-__device__ int max4(int a, int b, int c, int d)
+__device__ int max4(int n1, int n2, int n3, int n4)
 {
-    int tmp;
-    if (a > b) tmp = a;
-    else tmp = b;
-
-    if (c > tmp) tmp = c;
-    if (d > tmp) tmp = d;
-
-    return tmp; 
+	int tmp1, tmp2;
+	tmp1 =  n1 > n2 ? n1 : n2;
+	tmp2 = n3 > n4 ? n3 : n4;
+	tmp1 = tmp1 > tmp2 ? tmp1 : tmp2;
+	return tmp1;
 }

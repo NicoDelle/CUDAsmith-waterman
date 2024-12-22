@@ -1,8 +1,8 @@
 # Compiler and flags
 NVCC = nvcc
 CXX = g++
-CXXFLAGS = -I./src
-NVCCFLAGS = -I./src
+CXXFLAGS = -I./src -g
+NVCCFLAGS = -I./src -g
 
 # Directories
 SRC_DIR = src
@@ -25,6 +25,7 @@ MAIN_SRC ?= prove.cpp
 
 # Executable
 EXEC = out
+DEBUG_EXE = swdebug
 
 # Targets
 all: $(EXEC)
@@ -43,6 +44,9 @@ $(PAR_OBJ): $(PAR_SRC)
 
 $(EXEC): $(MAIN_SRC) $(SEQ_LIB) $(PAR_LIB)
 	$(NVCC) $(CXXFLAGS) -L$(LIB_DIR) -lsmithWatermanSeq -lsmithWatermanPar $< -o $@
+
+$(DEBUG_EXEC): $(MAIN_SRC) $(SEQ_LIB) $(PAR_LIB)
+	$(NVCC) $(CXXFLAGS) -L$(LIB_DIR) -lsmithWatermanSeq -lsmithWatermanPar $< -o $@ -g
 
 clean:
 	rm -f $(SEQ_OBJ) $(PAR_OBJ) $(EXEC)

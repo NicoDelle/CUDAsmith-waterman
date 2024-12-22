@@ -9,7 +9,8 @@ void allocateMatrix(T**& matrix, int rows, int cols);
 template <typename T>
 void allocateTensor(T***& tensor, int depth, int rows, int cols);
 std::tuple<int, int> compareCigars(u_int16_t **cigarSeq, u_int16_t **cigarPar);
-void saveToFile(const std::string filename, u_int16_t **matrix, int totRows, int totCols);
+template <typename T>
+void saveToFile(const std::string filename, T **matrix, int totRows, int totCols);
 
 int main()
 {
@@ -31,18 +32,14 @@ int main()
         }
     }
 
-	u_int16_t ***directionTensorPar = smithWatermanPar(h_query, h_reference, cigarPar);
     u_int16_t **directionMatrixSeq = smithWatermanSeq(h_query, h_reference, cigarSeq);
-
-    saveToFile("CigarSeq.txt", cigarSeq, N, 2*S_LEN);
-    saveToFile("CigarPar.txt", cigarPar, N, 2*S_LEN);
-    saveToFile("LastDirectionMatrixPar.txt", directionTensorPar[0], S_LEN+1, S_LEN +1);
-    saveToFile("LastDirectionMatrixSeq.txt", directionMatrixSeq, S_LEN+1, S_LEN+1);
+	u_int16_t ***directionTensorPar = smithWatermanPar(h_query, h_reference, cigarPar);
 
     int errSeq, errIdx;
-    //std::tie(errSeq, errIdx) = compareCigars(cigarSeq, cigarPar);
-    //std::cout << "Mismatch found in sequence " << errSeq << " at " <<  errIdx << std::endl;
-
+    std::tie(errSeq, errIdx) = compareCigars(cigarSeq, cigarPar);
+    if (errSeq != -1)
+        std::cout << "Mismatch found in sequence " << errSeq << " at " <<  errIdx << std::endl;
+    else std::cout << "All cigars match" << std::endl;
 
 	delete[] h_query[0];
 	delete[] h_query;
@@ -68,26 +65,24 @@ void allocateMatrix(T**& matrix, int rows, int cols)
 template <typename T>
 void allocateTensor(T***& tensor, int depth, int rows, int cols)
 {
+    // Allocate memory for the depth pointers
     tensor = new T**[depth];
-    tensor[0] = new T*[depth * rows];
-    tensor[0][0] = new T[depth * rows * cols];
-
+    
+    // Allocate memory for the row pointers for all depths
     for (int d = 0; d < depth; ++d)
     {
-        if (d > 0)
-        {
-            tensor[d] = tensor[d - 1] + rows;
-        }
+        tensor[d] = new T*[rows];
+    }
+    
+    // Allocate memory for all elements in a single contiguous block
+    T* dataBlock = new T[depth * rows * cols];
+
+    // Set the pointers for each depth and row
+    for (int d = 0; d < depth; ++d)
+    {
         for (int r = 0; r < rows; ++r)
         {
-            if (d == 0 && r > 0)
-            {
-                tensor[0][r] = tensor[0][r - 1] + cols;
-            }
-            else if (d > 0)
-            {
-                tensor[d][r] = tensor[d - 1][r] + cols;
-            }
+            tensor[d][r] = dataBlock + (d * rows * cols) + (r * cols);
         }
     }
 }
@@ -108,7 +103,8 @@ std::tuple<int, int> compareCigars(u_int16_t **cigarSeq, u_int16_t **cigarPar)
     return std::make_tuple(-1, -1);
 }
 
-void saveToFile(const std::string filename, u_int16_t **cigar, int totRows, int totCols)
+template <typename T>
+void saveToFile(const std::string filename, T **cigar, int totRows, int totCols)
 {
     std::ofstream file(filename);
     if (!file.is_open())

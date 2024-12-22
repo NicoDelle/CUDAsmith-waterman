@@ -41,7 +41,7 @@ u_int16_t **smithWatermanSeq(char **query, char **reference, u_int16_t **cigar)
 		dir_mat[i] = (u_int16_t *)malloc((S_LEN + 1) * sizeof(u_int16_t *));
 
     int *res = (int *)malloc(N * sizeof(int));
-
+    int p;
     for (int n = 0; n < N; n++)
     {
         int max = ins; // in sw all scores of the alignment are >= 0, so this will be for sure changed
@@ -63,15 +63,19 @@ u_int16_t **smithWatermanSeq(char **query, char **reference, u_int16_t **cigar)
             {
                 // compare the sequences characters
                 //-> PER OGNI RIGA, otteniamo se elementi di query e reference corrispondono
-                int comparison = (query[n][i - 1] == reference[n][j - 1]) ? match : mismatch; // <- problem here
-
+                int comparison = (query[n][i - 1] == reference[n][j - 1]) ? match : mismatch;
                 // compute the cell knowing the comparison result
-                int tmp = __max4(sc_mat[i - 1][j - 1] + comparison, sc_mat[i - 1][j] + del, sc_mat[i][j - 1] + ins, 0);
+                int tmp = __max4(
+                    sc_mat[i - 1][j - 1] + comparison, 
+                    sc_mat[i - 1][j] + del, 
+                    sc_mat[i][j - 1] + ins, 
+                    0
+                );
                 char dir;
 
                 //scegliamo la direzione da intraprendere una volta applicate delle penalità/premi.
                 if (tmp == (sc_mat[i - 1][j - 1] + comparison))
-                    dir = comparison == match ? 1 : 2; //-> se max è match dir=1, altrimenti se mismatch dir=2
+                    dir = ((comparison == match )? 1 : 2); //-> se max è match dir=1, altrimenti se mismatch dir=2
                 else if (tmp == (sc_mat[i - 1][j] + del))
                     dir = 3; 						  //-> se max è del, allora dir=3
                 else if (tmp == (sc_mat[i][j - 1] + ins))
