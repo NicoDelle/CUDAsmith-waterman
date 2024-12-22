@@ -21,7 +21,7 @@ SEQ_LIB = $(LIB_DIR)/libsmithWatermanSeq.a
 PAR_LIB = $(LIB_DIR)/libsmithWatermanPar.a
 
 # Default source file to compile
-MAIN_SRC ?= prove.cpp
+MAIN_SRC ?= main.cpp
 
 # Executable
 EXEC = out
