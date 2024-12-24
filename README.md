@@ -19,3 +19,7 @@ The matrix is computed with <code>2*S_LEN=1024</code> iterations:
 - And so on. This way, every element on the same diagonal is computed at the same time , and the matrix is completed from the top left corner to the bottom right one
 
 The rest of the algorithm consists of retrieving the path for the best match, and is computed sequentially
+
+## Performance comparison
+With the settings discussed above, the parallel algorithm takes around 2.11 s on a GTX 1650 mobile GPU paired with a ryzen 5 5600H, while the sequential one takes approximately 4.01 seconds to compute.
+This means the parallel algorithm gives almost a 50% performance gain.
