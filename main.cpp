@@ -2,7 +2,8 @@
 #include "src/smithWatermanPar.h"
 #include <tuple>
 #include <fstream>
-
+#include <chrono>
+#include <iostream>
 
 template <typename T>
 void allocateMatrix(T**& matrix, int rows, int cols);
@@ -32,8 +33,18 @@ int main()
         }
     }
 
+    auto startSeq = std::chrono::high_resolution_clock::now();
     u_int16_t **directionMatrixSeq = smithWatermanSeq(h_query, h_reference, cigarSeq);
+    auto endSeq = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> durationSeq = endSeq - startSeq;
+    std::cout << "Sequential execution time: " << durationSeq.count() << " seconds" << std::endl;
+
+
+    auto startPar = std::chrono::high_resolution_clock::now();
 	u_int16_t ***directionTensorPar = smithWatermanPar(h_query, h_reference, cigarPar);
+    auto endPar = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> durationPar = endPar - startPar;
+    std::cout << "Parallel execution time: " << durationPar.count() << " seconds" << std::endl;
 
     int errSeq, errIdx;
     std::tie(errSeq, errIdx) = compareCigars(cigarSeq, cigarPar);

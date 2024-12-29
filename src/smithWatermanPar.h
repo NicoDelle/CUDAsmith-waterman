@@ -54,8 +54,8 @@ __host__ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int
 __device__ __forceinline__ int mapToElement(int tid, int iteration);
 __device__ __forceinline__ int mapToQueryIndex(int tid, int iteration);
 __device__ __forceinline__ int mapToReferenceIndex(int tid, int iteration);
-__device__ __forceinline__ int leftNeighbor(int index);
-__device__ __forceinline__ int upNeighbor(int index);
-__device__ __forceinline__ int upLeftNeighbor(int index);
+__device__ __forceinline__ int getLeftNeighbor(int index);
+__device__ __forceinline__ int getUpNeighbor(int index);
+__device__ __forceinline__ int getUpLeftNeighbor(int index);
 __device__ __forceinline__ int getActiveThreads(int iteration);
 __device__ int max4(int a, int b, int c, int d);

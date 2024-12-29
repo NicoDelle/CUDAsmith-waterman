@@ -6,3 +6,6 @@ swdebug.cu
 smith-waterman.cu
 smith-watermanSeq.cpp
 lib/
+
+getInfo.cu
+info

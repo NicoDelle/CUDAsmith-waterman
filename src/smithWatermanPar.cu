@@ -8,29 +8,45 @@ __global__ void smithWatermanKernel(
     )
 {
     int tid = threadIdx.x;
+    __shared__ u_int32_t scoreNeighbors[S_LEN];
+    if (tid < S_LEN)
+    {
+        scoreNeighbors[tid] = 0;
+    }
+    __syncthreads();
+
     int index, comparison, tmp;
     int max = INS;
+    u_int32_t upNeighbor, leftNeighbor;
 
     for (int iteration = 1; iteration < S_LEN * 2; iteration++)
     {
         if (tid < getActiveThreads(iteration)) 
         {
             index = mapToElement(tid, iteration) + blockIdx.x * (S_LEN+1) * (S_LEN+1);
+            if (iteration < S_LEN)
+            {
+                upNeighbor = scoreNeighbors[tid];
+            }
+            else
+            {
+                leftNeighbor = scoreNeighbors[tid];
+            }
+            
             //compute the algorithm given the neighbors
-
             comparison = ((d_query[mapToQueryIndex(tid, iteration) + S_LEN * blockIdx.x] == d_reference[mapToReferenceIndex(tid, iteration) + S_LEN * blockIdx.x]) ? MATCH : MISMATCH);
             tmp = max4(
-                d_score_tensor[upLeftNeighbor(index)] + comparison, 
-                d_score_tensor[upNeighbor(index)] + DEL,
-                d_score_tensor[leftNeighbor(index)] + INS,
+                d_score_tensor[getUpLeftNeighbor(index)] + comparison, 
+                d_score_tensor[getUpNeighbor(index)] + DEL,
+                d_score_tensor[getLeftNeighbor(index)] + INS,
                 0
             );
 
-            if (tmp == (d_score_tensor[upLeftNeighbor(index)] + comparison))
+            if (tmp == (d_score_tensor[getUpLeftNeighbor(index)] + comparison))
                 d_direction_tensor[index] = (comparison == MATCH) ? 1 : 2;
-            else if (tmp == (d_score_tensor[upNeighbor(index)] + DEL))
+            else if (tmp == (d_score_tensor[getUpNeighbor(index)] + DEL))
                 d_direction_tensor[index] = 3;
-            else if (tmp == (d_score_tensor[leftNeighbor(index)] + INS))
+            else if (tmp == (d_score_tensor[getLeftNeighbor(index)] + INS))
                 d_direction_tensor[index] = 4;
             else
                 d_direction_tensor[index] = 0;
@@ -193,17 +209,17 @@ __device__ __forceinline__ int mapToReferenceIndex(int tid, int iteration)
     return ((iteration <= S_LEN) ? tid : tid + iteration - S_LEN);
 }
 
-__device__ __forceinline__ int leftNeighbor(int index)
+__device__ __forceinline__ int getLeftNeighbor(int index)
 {
     return index - 1;
 }
 
-__device__ __forceinline__ int upNeighbor(int index)
+__device__ __forceinline__ int getUpNeighbor(int index)
 {
     return index - S_LEN - 1;
 }
 
-__device__ __forceinline__ int upLeftNeighbor(int index)
+__device__ __forceinline__ int getUpLeftNeighbor(int index)
 {
     return index - S_LEN - 2;
 }
