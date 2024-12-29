@@ -17,41 +17,48 @@ __global__ void smithWatermanKernel(
 
     int index, comparison, tmp;
     int max = INS;
-    u_int32_t upNeighbor, leftNeighbor;
+    u_int32_t upNeighbor, leftNeighbor, upLeftNeighbor;
 
     for (int iteration = 1; iteration < S_LEN * 2; iteration++)
     {
         if (tid < getActiveThreads(iteration)) 
         {
             index = mapToElement(tid, iteration) + blockIdx.x * (S_LEN+1) * (S_LEN+1);
+
+            upLeftNeighbor = d_score_tensor[getUpLeftNeighbor(index)];
+
             if (iteration < S_LEN)
             {
                 upNeighbor = scoreNeighbors[tid];
+                leftNeighbor = d_score_tensor[getLeftNeighbor(index)];
             }
             else
             {
+                upNeighbor = d_score_tensor[getUpNeighbor(index)];
                 leftNeighbor = scoreNeighbors[tid];
             }
             
             //compute the algorithm given the neighbors
             comparison = ((d_query[mapToQueryIndex(tid, iteration) + S_LEN * blockIdx.x] == d_reference[mapToReferenceIndex(tid, iteration) + S_LEN * blockIdx.x]) ? MATCH : MISMATCH);
             tmp = max4(
-                d_score_tensor[getUpLeftNeighbor(index)] + comparison, 
-                d_score_tensor[getUpNeighbor(index)] + DEL,
-                d_score_tensor[getLeftNeighbor(index)] + INS,
+                upLeftNeighbor + comparison, 
+                upNeighbor + DEL,
+                leftNeighbor + INS,
                 0
             );
 
-            if (tmp == (d_score_tensor[getUpLeftNeighbor(index)] + comparison))
+            if (tmp == (upLeftNeighbor + comparison))
                 d_direction_tensor[index] = (comparison == MATCH) ? 1 : 2;
-            else if (tmp == (d_score_tensor[getUpNeighbor(index)] + DEL))
+            else if (tmp == (upNeighbor + DEL))
                 d_direction_tensor[index] = 3;
-            else if (tmp == (d_score_tensor[getLeftNeighbor(index)] + INS))
+            else if (tmp == (leftNeighbor + INS))
                 d_direction_tensor[index] = 4;
             else
                 d_direction_tensor[index] = 0;
             
             d_score_tensor[index] = tmp;
+
+            scoreNeighbors[tid] = tmp;
         }
         __syncthreads();
     }    

@@ -2,7 +2,7 @@
 NVCC = nvcc
 CXX = g++
 CXXFLAGS = -I./src -g
-NVCCFLAGS = -I./src -g
+NVCCFLAGS = -I./src -g -lineinfo
 
 # Directories
 SRC_DIR = src
