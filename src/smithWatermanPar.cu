@@ -1,4 +1,29 @@
 #include "smithWatermanPar.h"
+#include <fstream>
+
+template <typename T>
+__host__ void writeMatrixToFile(T** matrix, int rows, int cols, const char* filename)
+{
+    std::ofstream file(filename);
+    if (file.is_open())
+    {
+        for (int i = 0; i < rows; i++)
+        {
+            for (int j = 0; j < cols; j++)
+            {
+                file << matrix[i][j];
+                if (j < cols - 1)
+                    file << ",";
+            }
+            file << "\n";
+        }
+        file.close();
+    }
+    else
+    {
+        std::cerr << "Unable to open file " << filename << std::endl;
+    }
+}
 
 __global__ void smithWatermanKernel(
     char* d_query, 
@@ -101,12 +126,16 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
     CUDA_CHECK(cudaMemcpy(h_direction_tensor[0][0], d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_score_tensor[0][0], d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
 
+
     int maxRow, maxCol;
     for (int i = 0; i < N; i++)
     {
         std::tie(maxRow, maxCol) = maxElement(h_score_tensor[i]);
+        std::cout << "Max coords: " << maxRow << ", " << maxCol << std::endl;
+        std::cout << "Max value: " << h_score_tensor[i][maxRow][maxCol] << std::endl; 
         backtraceP(cigar[i], h_direction_tensor[i], maxRow, maxCol, S_LEN*2);
     }
+    writeMatrixToFile(h_score_tensor[N-1], S_LEN+1, S_LEN+1, "scoreMatrix.txt");
 
     //CLEANUP
     cudaFree(d_direction_tensor);
