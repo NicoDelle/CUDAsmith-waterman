@@ -1,4 +1,6 @@
 #include "smithWatermanSeq.h"
+#include <fstream>
+
 
 int __max4(int n1, int n2, int n3, int n4)
 {
@@ -98,5 +100,24 @@ u_int16_t **smithWatermanSeq(char **query, char **reference, u_int16_t **cigar)
         backtrace(cigar[n], dir_mat, maxi, maxj, S_LEN * 2);
 
     }
+
+    // Store the last computed sc_mat to a file
+    std::ofstream outFile("scoring_matrix.txt");
+    if (outFile.is_open())
+    {
+        for (int i = 0; i < S_LEN + 1; i++)
+        {
+            for (int j = 0; j < S_LEN + 1; j++)
+            {
+                outFile << sc_mat[i][j] << (j == S_LEN ? "\n" : ",");
+            }
+        }
+        outFile.close();
+    }
+    else
+    {
+        std::cerr << "Unable to open file for writing" << std::endl;
+    }
+    
     return dir_mat;
 }
