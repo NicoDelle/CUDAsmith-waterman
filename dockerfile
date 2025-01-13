@@ -17,9 +17,6 @@ WORKDIR /workspace
 # Install additional tools for development
 RUN apt-get install -y vim git wget
 
-# Compile with NVCC
-RUN nvcc -arch=sm_70 -o sw smith-waterman.cu
-
 # Expose port for VS Code to attach
 EXPOSE 22
 

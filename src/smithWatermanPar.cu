@@ -29,19 +29,23 @@ __global__ void smithWatermanKernel(
     char* d_query, 
     char* d_reference, 
     u_int32_t *d_score_tensor, 
-    u_int16_t *d_direction_tensor
+    u_int16_t *d_direction_tensor,
+    int *d_maxRow,
+    int *d_maxCol,
+    u_int32_t *d_maxVal
     )
 {
     int tid = threadIdx.x;
-    __shared__ u_int32_t scoreNeighbors[S_LEN];
+    __shared__ u_int32_t maxValues[S_LEN];
+    __shared__ int maxValuesx[S_LEN];
+    __shared__ int maxValuesy[S_LEN];
     if (tid < S_LEN)
     {
-        scoreNeighbors[tid] = 0;
+        maxValues[tid] = 0;
     }
     __syncthreads();
 
     int index, comparison, tmp;
-    int max = INS;
     u_int32_t upNeighbor, leftNeighbor, upLeftNeighbor;
 
     for (int iteration = 1; iteration < S_LEN * 2; iteration++)
@@ -51,20 +55,12 @@ __global__ void smithWatermanKernel(
             index = mapToElement(tid, iteration) + blockIdx.x * (S_LEN+1) * (S_LEN+1);
 
             upLeftNeighbor = d_score_tensor[getUpLeftNeighbor(index)];
+            leftNeighbor = d_score_tensor[getLeftNeighbor(index)];
+            upNeighbor = d_score_tensor[getUpNeighbor(index)];
 
-            if (iteration < S_LEN)
-            {
-                upNeighbor = scoreNeighbors[tid];
-                leftNeighbor = d_score_tensor[getLeftNeighbor(index)];
-            }
-            else
-            {
-                upNeighbor = d_score_tensor[getUpNeighbor(index)];
-                leftNeighbor = scoreNeighbors[tid];
-            }
             
             //compute the algorithm given the neighbors
-            comparison = ((d_query[mapToQueryIndex(tid, iteration) + S_LEN * blockIdx.x] == d_reference[mapToReferenceIndex(tid, iteration) + S_LEN * blockIdx.x]) ? MATCH : MISMATCH);
+            comparison = ((d_query[getRow(tid, iteration) + S_LEN * blockIdx.x] == d_reference[getCol(tid, iteration) + S_LEN * blockIdx.x]) ? MATCH : MISMATCH);
             tmp = max4(
                 upLeftNeighbor + comparison, 
                 upNeighbor + DEL,
@@ -83,30 +79,67 @@ __global__ void smithWatermanKernel(
             
             d_score_tensor[index] = tmp;
 
-            scoreNeighbors[tid] = tmp;
+            if (tmp > maxValues[tid] || (tmp == maxValues[tid] && (getRow(tid, iteration) < maxValuesx[tid] || (getRow(tid, iteration) == maxValuesx[tid] && getCol(tid, iteration) < maxValuesy[tid])))) // Store max value found by each thread and its index
+            {
+                maxValues[tid] = tmp;
+                maxValuesx[tid] = getRow(tid, iteration);
+                maxValuesy[tid] = getCol(tid, iteration);
+            }
         }
         __syncthreads();
-    }    
+    }
+
+    if (tid == 0)
+    {
+        u_int32_t max_val = 0;
+        int max_x = 513, max_y = 513;
+        for (int i = 0; i < S_LEN; i++)
+        {
+            if (maxValues[i] > max_val || (maxValues[i] == max_val && (maxValuesx[i] < max_x || (maxValuesx[i] == max_x && maxValuesy[i] < max_y))))
+            {
+                max_val = maxValues[i];
+                max_x = maxValuesx[i];
+                max_y = maxValuesy[i];
+            }
+        }
+        d_maxRow[blockIdx.x] = max_x + 1;
+        d_maxCol[blockIdx.x] = max_y + 1;
+        d_maxVal[blockIdx.x] = max_val;
+    }
+    __syncthreads();
 }
 
 u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **cigar)
 {
+    int h_maxRow[N];
+    int h_maxCol[N];
+
+    u_int32_t h_maxVal[N];
+    
     u_int16_t ***h_direction_tensor;
-    u_int32_t ***h_score_tensor;
 
     allocateTensor(h_direction_tensor, N, S_LEN + 1, S_LEN + 1);
-    allocateTensor(h_score_tensor, N, S_LEN+1, S_LEN+1);
 
     char *d_query;
     char *d_reference;
     u_int32_t *d_score_tensor;
     u_int16_t *d_direction_tensor;
+    int *d_maxRow;
+    int *d_maxCol;
+
+    u_int32_t *d_maxVal;
 
     CUDA_CHECK(cudaMalloc(&d_query, N*S_LEN*sizeof(char))); // 512 KB
     CUDA_CHECK(cudaMalloc(&d_reference, N*S_LEN*sizeof(char))); // 512 KB
+
     //Tensors to store all score/direction matrices at once
     CUDA_CHECK(cudaMalloc(&d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t))); // 1.052 GB
     CUDA_CHECK(cudaMalloc(&d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t))); // 263 MB -> tot 1.365 GB
+
+    CUDA_CHECK(cudaMalloc(&d_maxRow, N*sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_maxCol, N*sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_maxVal, N*sizeof(u_int32_t)));
+
 
     CUDA_CHECK(cudaMemcpy(d_query, h_query[0], N*S_LEN*sizeof(char), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_reference, h_reference[0], N*S_LEN*sizeof(char), cudaMemcpyHostToDevice));
@@ -119,23 +152,26 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
         d_query, 
         d_reference, 
         d_score_tensor, 
-        d_direction_tensor
+        d_direction_tensor,
+        d_maxRow,
+        d_maxCol,
+        d_maxVal
     );
     CUDA_KERNEL_CHECK();
 
     CUDA_CHECK(cudaMemcpy(h_direction_tensor[0][0], d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t), cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_score_tensor[0][0], d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
+    //CUDA_CHECK(cudaMemcpy(h_score_tensor[0][0], d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_maxRow, d_maxRow, N*sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_maxCol, d_maxCol, N*sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_maxVal, d_maxVal, N*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
 
 
+    //writeMatrixToFile(h_score_tensor[0], S_LEN+1, S_LEN+1, "scoreMatrix.txt");
     int maxRow, maxCol;
     for (int i = 0; i < N; i++)
     {
-        std::tie(maxRow, maxCol) = maxElement(h_score_tensor[i]);
-        std::cout << "Max coords: " << maxRow << ", " << maxCol << std::endl;
-        std::cout << "Max value: " << h_score_tensor[i][maxRow][maxCol] << std::endl; 
-        backtraceP(cigar[i], h_direction_tensor[i], maxRow, maxCol, S_LEN*2);
+        backtraceP(cigar[i], h_direction_tensor[i], h_maxRow[i], h_maxCol[i], S_LEN*2);
     }
-    writeMatrixToFile(h_score_tensor[N-1], S_LEN+1, S_LEN+1, "scoreMatrix.txt");
 
     //CLEANUP
     cudaFree(d_direction_tensor);
@@ -144,10 +180,6 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
     cudaFree(d_reference);
 
     // Free the memory allocated for the tensors
-    delete[] h_score_tensor[0][0];
-    delete[] h_score_tensor[0];
-    delete[] h_score_tensor;
-
     return h_direction_tensor;
 }
 
@@ -235,12 +267,20 @@ __device__ __forceinline__ int mapToElement(int tid, int iteration)
     return (iteration <= S_LEN) ? tid + 1 + (S_LEN + 1) * (iteration - tid) : (S_LEN - tid) * (S_LEN + 1) + iteration - S_LEN + tid + 1;
 }
 
-__device__ __forceinline__ int mapToQueryIndex(int tid, int iteration)
+/**
+ * @brief returns the row index of the element being processed by the thread of ID tid during the given iteration.
+ * Can be used to get the corresponding value in the query string
+ */
+__device__ __forceinline__ int getRow(int tid, int iteration)
 {
     return ((iteration <= S_LEN) ? getActiveThreads(iteration) - tid - 1 : S_LEN - tid - 1);
 }
 
-__device__ __forceinline__ int mapToReferenceIndex(int tid, int iteration)
+/**
+ * @brief function used to get the column index of an element given the thread id of the thread processing during a given iteration.
+ * Can be used ot get the corresponding value in the reference string
+ */
+__device__ __forceinline__ int getCol(int tid, int iteration)
 {
     return ((iteration <= S_LEN) ? tid : tid + iteration - S_LEN);
 }

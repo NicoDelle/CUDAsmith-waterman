@@ -13,3 +13,4 @@ cuda-repo-ubuntu2004-11-2-local_11.2.2-460.32.03-1_amd64.deb
 *.nsys-rep
 *.sqlite
 checkMatrix
+checkMax

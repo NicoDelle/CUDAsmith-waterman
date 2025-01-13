@@ -1,5 +1,5 @@
-#include "src/smithWatermanSeq.h"
-#include "src/smithWatermanPar.h"
+#include "smithWatermanSeq.h"
+#include "smithWatermanPar.h"
 #include <tuple>
 #include <fstream>
 #include <chrono>
@@ -23,7 +23,7 @@ int main()
 	allocateMatrix(cigarSeq, N, 2*S_LEN);
 	allocateMatrix(cigarPar, N, 2*S_LEN);
     
-	char alphabet[] = {'A', 'T', 'C', 'G', 'N'};
+	char alphabet[] = {'T', 'A', 'C', 'G', 'N'};
 	for (int i = 0; i < N; i++)
     {
         for (int j = 0; j < S_LEN; j++)
@@ -44,10 +44,10 @@ int main()
 	u_int16_t ***directionTensorPar = smithWatermanPar(h_query, h_reference, cigarPar);
     auto endPar = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> durationPar = endPar - startPar;
-    std::cout << "Parallel execution time: " << durationPar.count() << " seconds" << std::endl;
-
     int errSeq, errIdx;
     std::tie(errSeq, errIdx) = compareCigars(cigarSeq, cigarPar);
+    std::cout << "Parallel execution time: " << durationPar.count() << " seconds" << std::endl;
+
     if (errSeq != -1)
         std::cout << "Mismatch found in sequence " << errSeq << " at " <<  errIdx << std::endl;
     else std::cout << "All cigars match" << std::endl;

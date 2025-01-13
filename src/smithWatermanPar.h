@@ -52,8 +52,8 @@ __host__ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int
 //device only functions
 
 __device__ __forceinline__ int mapToElement(int tid, int iteration);
-__device__ __forceinline__ int mapToQueryIndex(int tid, int iteration);
-__device__ __forceinline__ int mapToReferenceIndex(int tid, int iteration);
+__device__ __forceinline__ int getRow(int tid, int iteration);
+__device__ __forceinline__ int getCol(int tid, int iteration);
 __device__ __forceinline__ int getLeftNeighbor(int index);
 __device__ __forceinline__ int getUpNeighbor(int index);
 __device__ __forceinline__ int getUpLeftNeighbor(int index);
