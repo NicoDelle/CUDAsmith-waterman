@@ -37,13 +37,11 @@ __global__ void smithWatermanKernel(
     )
 {
     int tid = threadIdx.x;
-    __shared__ u_int32_t scoreNeighbors[S_LEN];
     __shared__ u_int32_t maxValues[S_LEN];
     __shared__ int maxValuesx[S_LEN];
     __shared__ int maxValuesy[S_LEN];
     if (tid < S_LEN)
     {
-        scoreNeighbors[tid] = 0;
         maxValues[tid] = 0;
     }
     __syncthreads();
@@ -58,17 +56,9 @@ __global__ void smithWatermanKernel(
             index = mapToElement(tid, iteration) + blockIdx.x * (S_LEN+1) * (S_LEN+1);
 
             upLeftNeighbor = d_score_tensor[getUpLeftNeighbor(index)];
+            leftNeighbor = d_score_tensor[getLeftNeighbor(index)];
+            upNeighbor = d_score_tensor[getUpNeighbor(index)];
 
-            if (iteration < S_LEN)
-            {
-                upNeighbor = scoreNeighbors[tid];
-                leftNeighbor = d_score_tensor[getLeftNeighbor(index)];
-            }
-            else
-            {
-                upNeighbor = d_score_tensor[getUpNeighbor(index)];
-                leftNeighbor = scoreNeighbors[tid];
-            }
             
             //compute the algorithm given the neighbors
             comparison = ((d_query[getRow(tid, iteration) + S_LEN * blockIdx.x] == d_reference[getCol(tid, iteration) + S_LEN * blockIdx.x]) ? MATCH : MISMATCH);
@@ -90,8 +80,9 @@ __global__ void smithWatermanKernel(
             
             d_score_tensor[index] = tmp;
 
-            scoreNeighbors[tid] = tmp;
             if (tmp > maxValues[tid]) //store max value found by each thread and it's index
+            if (tmp > maxValues[tid] || (tmp == maxValues[tid] && (getRow(tid, iteration) < maxValuesx[tid] || (getRow(tid, iteration) == maxValuesx[tid] && getCol(tid, iteration) < maxValuesy[tid])))) // Store max value found by each thread and its index
+
             {
                 maxValues[tid] = tmp;
                 maxValuesx[tid] = getRow(tid, iteration);
@@ -104,18 +95,18 @@ __global__ void smithWatermanKernel(
     if (tid == 0)
     {
         u_int32_t max_val = 0;
-        int max_x = 0, max_y = 0;
+        int max_x = 513, max_y = 513;
         for (int i = 0; i < S_LEN; i++)
         {
-            if (maxValues[i] > max_val)
+            if (maxValues[i] > max_val || (maxValues[i] == max_val && (maxValuesx[i] < max_x || (maxValuesx[i] == max_x && maxValuesy[i] < max_y))))
             {
                 max_val = maxValues[i];
                 max_x = maxValuesx[i];
                 max_y = maxValuesy[i];
             }
         }
-        d_maxRow[blockIdx.x] = max_x;
-        d_maxCol[blockIdx.x] = max_y;
+        d_maxRow[blockIdx.x] = max_x + 1;
+        d_maxCol[blockIdx.x] = max_y + 1;
         d_maxVal[blockIdx.x] = max_val;
     }
     __syncthreads();
@@ -173,22 +164,25 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
     CUDA_KERNEL_CHECK();
 
     CUDA_CHECK(cudaMemcpy(h_direction_tensor[0][0], d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t), cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_score_tensor[0][0], d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
+    //CUDA_CHECK(cudaMemcpy(h_score_tensor[0][0], d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_maxRow, d_maxRow, N*sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_maxCol, d_maxCol, N*sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_maxVal, d_maxVal, N*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
 
 
-    writeMatrixToFile(h_score_tensor[N-1], S_LEN+1, S_LEN+1, "scoreMatrix.txt");
+    //writeMatrixToFile(h_score_tensor[0], S_LEN+1, S_LEN+1, "scoreMatrix.txt");
     int maxRow, maxCol;
     for (int i = 0; i < N; i++)
     {
-        std::tie(maxRow, maxCol) = maxElement(h_direction_tensor[i]);
-        std::cout << "Coords found by old algorithm: (" << maxRow << ", " << maxCol << ")" << std::endl;
-        std::cout << "Coords found by new method: (" << h_maxRow[i] << ", " << h_maxCol[i] << ")" << std::endl;
-        std::cout << "Max value as found on device: " << h_maxVal[i] << std::endl;
+        //std::tie(maxRow, maxCol) = maxElement(h_direction_tensor[i]);
+        //if (i == 0)
+        //{
+        //    std::cout << "Coords found by old algorithm: (" << maxRow << ", " << maxCol << ")" << std::endl;
+        //    std::cout << "Coords found by new method: (" << h_maxRow[i] << ", " << h_maxCol[i] << ")" << std::endl;
+        //    std::cout << "Max value as found on device: " << h_maxVal[i] << std::endl;
+        //}
 
-        backtraceP(cigar[i], h_direction_tensor[i], maxRow, maxCol, S_LEN*2);
+        backtraceP(cigar[i], h_direction_tensor[i], h_maxRow[i], h_maxCol[i], S_LEN*2);
     }
 
     //CLEANUP
