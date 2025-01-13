@@ -99,31 +99,6 @@ u_int16_t **smithWatermanSeq(char **query, char **reference, u_int16_t **cigar)
         }
         res[n] = sc_mat[maxi][maxj];//il miglior match finisce sempre nella cella con lo score più alto
         backtrace(cigar[n], dir_mat, maxi, maxj, S_LEN * 2);
-
-        if (n == 0)
-        {
-            std::cout << "#" << n << ": " << std::endl;
-            std::cout << "Max coords: " << maxi << ", " << maxj << std::endl;
-            std::cout << "Max val: " << max << std::endl << std::endl;
-
-            // Store the last computed sc_mat to a file
-            std::ofstream outFile("scoring_matrix.txt");
-            if (outFile.is_open())
-            {
-                for (int i = 0; i < S_LEN + 1; i++)
-                {
-                    for (int j = 0; j < S_LEN + 1; j++)
-                    {
-                        outFile << sc_mat[i][j] << (j == S_LEN ? "\n" : ",");
-                    }
-                }
-                outFile.close();
-            }
-            else
-            {
-                std::cerr << "Unable to open file for writing" << std::endl;
-            }
-        }
     }
 
     return dir_mat;
