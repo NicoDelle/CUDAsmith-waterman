@@ -1,31 +1,5 @@
 #include "smithWatermanPar.h"
 
-#include <fstream>
-
-template <typename T>
-__host__ void writeMatrixToFile(T** matrix, int rows, int cols, const char* filename)
-{
-    std::ofstream file(filename);
-    if (file.is_open())
-    {
-        for (int i = 0; i < rows; i++)
-        {
-            for (int j = 0; j < cols; j++)
-            {
-                file << matrix[i][j];
-                if (j < cols - 1)
-                    file << ",";
-            }
-            file << "\n";
-        }
-        file.close();
-    }
-    else
-    {
-        std::cerr << "Unable to open file " << filename << std::endl;
-    }
-}
-
 __global__ void smithWatermanKernel(
     char* d_query, 
     char* d_reference, 
@@ -80,9 +54,7 @@ __global__ void smithWatermanKernel(
             
             d_score_tensor[index] = tmp;
 
-            if (tmp > maxValues[tid]) //store max value found by each thread and it's index
             if (tmp > maxValues[tid] || (tmp == maxValues[tid] && (getRow(tid, iteration) < maxValuesx[tid] || (getRow(tid, iteration) == maxValuesx[tid] && getCol(tid, iteration) < maxValuesy[tid])))) // Store max value found by each thread and its index
-
             {
                 maxValues[tid] = tmp;
                 maxValuesx[tid] = getRow(tid, iteration);
@@ -120,10 +92,8 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
     u_int32_t h_maxVal[N];
     
     u_int16_t ***h_direction_tensor;
-    u_int32_t ***h_score_tensor;
 
     allocateTensor(h_direction_tensor, N, S_LEN + 1, S_LEN + 1);
-    allocateTensor(h_score_tensor, N, S_LEN+1, S_LEN+1);
 
     char *d_query;
     char *d_reference;
@@ -136,6 +106,7 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
 
     CUDA_CHECK(cudaMalloc(&d_query, N*S_LEN*sizeof(char))); // 512 KB
     CUDA_CHECK(cudaMalloc(&d_reference, N*S_LEN*sizeof(char))); // 512 KB
+
     //Tensors to store all score/direction matrices at once
     CUDA_CHECK(cudaMalloc(&d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t))); // 1.052 GB
     CUDA_CHECK(cudaMalloc(&d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t))); // 263 MB -> tot 1.365 GB
@@ -174,14 +145,6 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
     int maxRow, maxCol;
     for (int i = 0; i < N; i++)
     {
-        //std::tie(maxRow, maxCol) = maxElement(h_direction_tensor[i]);
-        //if (i == 0)
-        //{
-        //    std::cout << "Coords found by old algorithm: (" << maxRow << ", " << maxCol << ")" << std::endl;
-        //    std::cout << "Coords found by new method: (" << h_maxRow[i] << ", " << h_maxCol[i] << ")" << std::endl;
-        //    std::cout << "Max value as found on device: " << h_maxVal[i] << std::endl;
-        //}
-
         backtraceP(cigar[i], h_direction_tensor[i], h_maxRow[i], h_maxCol[i], S_LEN*2);
     }
 
@@ -192,10 +155,6 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
     cudaFree(d_reference);
 
     // Free the memory allocated for the tensors
-    delete[] h_score_tensor[0][0];
-    delete[] h_score_tensor[0];
-    delete[] h_score_tensor;
-
     return h_direction_tensor;
 }
 
