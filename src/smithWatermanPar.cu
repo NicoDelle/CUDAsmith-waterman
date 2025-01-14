@@ -1,46 +1,19 @@
 #include "smithWatermanPar.h"
 
-#include <fstream>
-
-template <typename T>
-__host__ void writeMatrixToFile(T** matrix, int rows, int cols, const char* filename)
-{
-    std::ofstream file(filename);
-    if (file.is_open())
-    {
-        for (int i = 0; i < rows; i++)
-        {
-            for (int j = 0; j < cols; j++)
-            {
-                file << matrix[i][j];
-                if (j < cols - 1)
-                    file << ",";
-            }
-            file << "\n";
-        }
-        file.close();
-    }
-    else
-    {
-        std::cerr << "Unable to open file " << filename << std::endl;
-    }
-}
-
 __global__ void smithWatermanKernel(
     char* d_query, 
     char* d_reference,
     u_int16_t *d_direction_tensor,
     int *d_maxRow,
-    int *d_maxCol,
-    u_int32_t *d_maxVal
+    int *d_maxCol
     )
 {
     int tid = threadIdx.x;
+
     //Total shared memory usage: 5x4xS_LEN = 10.240 B = 1KB / Block
     __shared__ u_int32_t maxValues[S_LEN];
     __shared__ int maxValuesx[S_LEN];
     __shared__ int maxValuesy[S_LEN];
-
     __shared__ u_int32_t scoreNeighbors[S_LEN];
     __shared__ u_int32_t prevScoreNeighbors[S_LEN];
 
@@ -59,10 +32,7 @@ __global__ void smithWatermanKernel(
     {
         if (tid < getActiveThreads(iteration)) 
         {
-            index = mapToElement(tid, iteration) + blockIdx.x * (S_LEN+1) * (S_LEN+1);
-
-            //upLeftNeighbor = d_score_tensor[getUpLeftNeighbor(index)];
-
+            //Get neighboring scores from score arrays in shared
             if (iteration <= S_LEN)
             {
                 upNeighbor = scoreNeighbors[tid];
@@ -75,20 +45,14 @@ __global__ void smithWatermanKernel(
                 {
                     leftNeighbor = scoreNeighbors[tid-1];
                     upLeftNeighbor = prevScoreNeighbors[tid-1];
-                }
-                //leftNeighbor = d_score_tensor[getLeftNeighbor(index)]; //scoreNeighbors[tid-1]
-                
+                }                
             }
             else
             {
-                //upNeighbor = d_score_tensor[getUpNeighbor(index)]; //scoreNeighbors[tid+1]
                 upNeighbor = scoreNeighbors[tid+1];
                 leftNeighbor = scoreNeighbors[tid];
-
                 if (iteration == S_LEN + 1) upLeftNeighbor = prevScoreNeighbors[tid];
                 else upLeftNeighbor = prevScoreNeighbors[tid+1];
-                //upLeftNeighbor = d_score_tensor[getUpLeftNeighbor(index)];
-
             }
             
             //compute the algorithm given the neighbors
@@ -100,6 +64,7 @@ __global__ void smithWatermanKernel(
                 0
             );
 
+            index = mapToElement(tid, iteration) + blockIdx.x * (S_LEN+1) * (S_LEN+1);
             if (tmp == (upLeftNeighbor + comparison))
                 d_direction_tensor[index] = (comparison == MATCH) ? 1 : 2;
             else if (tmp == (upNeighbor + DEL))
@@ -107,10 +72,7 @@ __global__ void smithWatermanKernel(
             else if (tmp == (leftNeighbor + INS))
                 d_direction_tensor[index] = 4;
             else
-                d_direction_tensor[index] = 0;
-            
-            //d_score_tensor[index] = tmp;
-            
+                d_direction_tensor[index] = 0;            
 
             //store max value found by each thread and it's index
             if (tmp > maxValues[tid] || (tmp == maxValues[tid] && (getRow(tid, iteration) < maxValuesx[tid] || (getRow(tid, iteration) == maxValuesx[tid] && getCol(tid, iteration) < maxValuesy[tid])))) // Store max value found by each thread and its index
@@ -123,6 +85,7 @@ __global__ void smithWatermanKernel(
         }
         __syncthreads();
 
+        //store scores of each thread. Need to be between synch statements to avoid race conditions
         if (tid < getActiveThreads(iteration))
         {
             prevScoreNeighbors[tid] = scoreNeighbors[tid];
@@ -146,47 +109,33 @@ __global__ void smithWatermanKernel(
         }
         d_maxRow[blockIdx.x] = max_x + 1;
         d_maxCol[blockIdx.x] = max_y + 1;
-        d_maxVal[blockIdx.x] = max_val;
     }
     __syncthreads();
 }
 
 u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **cigar)
 {
+    //Host pointers
     int h_maxRow[N];
     int h_maxCol[N];
-
-    u_int32_t h_maxVal[N];
-    
     u_int16_t ***h_direction_tensor;
-    u_int32_t ***h_score_tensor;
-
     allocateTensor(h_direction_tensor, N, S_LEN + 1, S_LEN + 1);
-    allocateTensor(h_score_tensor, N, S_LEN+1, S_LEN+1);
 
+    //device pointers
     char *d_query;
     char *d_reference;
-    u_int32_t *d_score_tensor;
     u_int16_t *d_direction_tensor;
     int *d_maxRow;
     int *d_maxCol;
 
-    u_int32_t *d_maxVal;
-
     CUDA_CHECK(cudaMalloc(&d_query, N*S_LEN*sizeof(char))); // 512 KB
     CUDA_CHECK(cudaMalloc(&d_reference, N*S_LEN*sizeof(char))); // 512 KB
-    //Tensors to store all score/direction matrices at once
-    //CUDA_CHECK(cudaMalloc(&d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t))); // 1.052 GB
-    CUDA_CHECK(cudaMalloc(&d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t))); // 263 MB -> tot 1.365 GB
-
-    CUDA_CHECK(cudaMalloc(&d_maxRow, N*sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&d_maxCol, N*sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&d_maxVal, N*sizeof(u_int32_t)));
-
+    CUDA_CHECK(cudaMalloc(&d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t))); // 263 MB
+    CUDA_CHECK(cudaMalloc(&d_maxRow, N*sizeof(int))); //4 KB
+    CUDA_CHECK(cudaMalloc(&d_maxCol, N*sizeof(int))); //4 KB
 
     CUDA_CHECK(cudaMemcpy(d_query, h_query[0], N*S_LEN*sizeof(char), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_reference, h_reference[0], N*S_LEN*sizeof(char), cudaMemcpyHostToDevice));
-    //CUDA_CHECK(cudaMemset(d_score_tensor, 0, N * (S_LEN + 1) * (S_LEN + 1) * sizeof(u_int32_t))); // problem if N > 1
     CUDA_CHECK(cudaMemset(d_direction_tensor, 0, N * (S_LEN + 1) * (S_LEN + 1) * sizeof(u_int16_t)));
 
     dim3 threadsPerBlock(NUM_THREADS, 1, 1);
@@ -196,43 +145,26 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
         d_reference, 
         d_direction_tensor,
         d_maxRow,
-        d_maxCol,
-        d_maxVal
+        d_maxCol
     );
     CUDA_KERNEL_CHECK();
 
     CUDA_CHECK(cudaMemcpy(h_direction_tensor[0][0], d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t), cudaMemcpyDeviceToHost));
-    //CUDA_CHECK(cudaMemcpy(h_score_tensor[0][0], d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_maxRow, d_maxRow, N*sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_maxCol, d_maxCol, N*sizeof(int), cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_maxVal, d_maxVal, N*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
 
-
-    writeMatrixToFile(h_score_tensor[0], S_LEN+1, S_LEN+1, "scoreMatrix.txt");
     int maxRow, maxCol;
     for (int i = 0; i < N; i++)
     {
-        //std::tie(maxRow, maxCol) = maxElement(h_direction_tensor[i]);
-        //if (i == 0)
-        //{
-        //    std::cout << "Coords found by old algorithm: (" << maxRow << ", " << maxCol << ")" << std::endl;
-        //    std::cout << "Coords found by new method: (" << h_maxRow[i] << ", " << h_maxCol[i] << ")" << std::endl;
-        //    std::cout << "Max value as found on device: " << h_maxVal[i] << std::endl;
-        //}
-
         backtraceP(cigar[i], h_direction_tensor[i], h_maxRow[i], h_maxCol[i], S_LEN*2);
     }
 
     //CLEANUP
     cudaFree(d_direction_tensor);
-    cudaFree(d_score_tensor);
     cudaFree(d_query);
     cudaFree(d_reference);
-
-    // Free the memory allocated for the tensors
-    delete[] h_score_tensor[0][0];
-    delete[] h_score_tensor[0];
-    delete[] h_score_tensor;
+    cudaFree(d_maxRow);
+    cudaFree(d_maxCol);
 
     return h_direction_tensor;
 }
@@ -271,26 +203,6 @@ __host__ void allocateTensor(T***& tensor, int depth, int rows, int cols)
             tensor[d][r] = dataBlock + (d * rows * cols) + (r * cols);
         }
     }
-}
-
-template <typename T>
-__host__ std::tuple<int, int> maxElement(T**& matrix)
-{
-    T max = 0;
-    int maxRow, maxCol;
-    for (int i = 1; i < S_LEN + 1; i++)
-    {
-        for (int j = 1; j < S_LEN + 1; j++)
-        {
-            if (matrix[i][j] > max)
-            {
-                max = matrix[i][j];
-                maxRow = i;
-                maxCol = j;
-            }
-        }
-    }
-    return std::make_tuple(maxRow, maxCol);
 }
 
 void backtraceP(u_int16_t *simple_rev_cigar, u_int16_t **dir_mat, int i, int j, int max_cigar_len)
@@ -337,21 +249,6 @@ __device__ __forceinline__ int getRow(int tid, int iteration)
 __device__ __forceinline__ int getCol(int tid, int iteration)
 {
     return ((iteration <= S_LEN) ? tid : tid + iteration - S_LEN);
-}
-
-__device__ __forceinline__ int getLeftNeighbor(int index)
-{
-    return index - 1;
-}
-
-__device__ __forceinline__ int getUpNeighbor(int index)
-{
-    return index - S_LEN - 1;
-}
-
-__device__ __forceinline__ int getUpLeftNeighbor(int index)
-{
-    return index - S_LEN - 2;
 }
 
 /**

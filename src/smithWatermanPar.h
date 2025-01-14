@@ -44,8 +44,6 @@ template <typename T>
 __host__ void allocateMatrix(T**& matrix, int rows, int cols);
 template <typename T>
 __host__ void allocateTensor(T***& tensor, int depth, int rows, int cols);
-template <typename T>
-__host__ std::tuple<int,int> maxElement(T**& matrix);
 __host__ void backtraceP(u_int16_t *simple_rev_cigar, u_int16_t **dir_mat, int i, int j, int max_cigar_len);
 __host__ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **cigar);
 
@@ -54,8 +52,5 @@ __host__ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int
 __device__ __forceinline__ int mapToElement(int tid, int iteration);
 __device__ __forceinline__ int getRow(int tid, int iteration);
 __device__ __forceinline__ int getCol(int tid, int iteration);
-__device__ __forceinline__ int getLeftNeighbor(int index);
-__device__ __forceinline__ int getUpNeighbor(int index);
-__device__ __forceinline__ int getUpLeftNeighbor(int index);
 __device__ __forceinline__ int getActiveThreads(int iteration);
 __device__ int max4(int a, int b, int c, int d);
