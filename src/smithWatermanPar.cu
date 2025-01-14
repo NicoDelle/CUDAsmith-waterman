@@ -63,11 +63,14 @@ __global__ void smithWatermanKernel(
             if (iteration <= S_LEN)
             {
                 upNeighbor = scoreNeighbors[tid];
-                leftNeighbor = d_score_tensor[getLeftNeighbor(index)];
+                if (tid == 0) leftNeighbor = 0;
+                else leftNeighbor = scoreNeighbors[tid-1];
+                //leftNeighbor = d_score_tensor[getLeftNeighbor(index)]; //scoreNeighbors[tid-1]
             }
             else
             {
-                upNeighbor = d_score_tensor[getUpNeighbor(index)];
+                //upNeighbor = d_score_tensor[getUpNeighbor(index)]; //scoreNeighbors[tid+1]
+                upNeighbor = scoreNeighbors[tid+1];
                 leftNeighbor = scoreNeighbors[tid];
             }
             
@@ -90,7 +93,7 @@ __global__ void smithWatermanKernel(
                 d_direction_tensor[index] = 0;
             
             d_score_tensor[index] = tmp;
-            scoreNeighbors[tid] = tmp;
+            
 
             if (tmp > maxValues[tid]) //store max value found by each thread and it's index
             if (tmp > maxValues[tid] || (tmp == maxValues[tid] && (getRow(tid, iteration) < maxValuesx[tid] || (getRow(tid, iteration) == maxValuesx[tid] && getCol(tid, iteration) < maxValuesy[tid])))) // Store max value found by each thread and its index
@@ -101,6 +104,10 @@ __global__ void smithWatermanKernel(
                 maxValuesy[tid] = getCol(tid, iteration);
             }
         }
+        __syncthreads();
+
+        if (tid < getActiveThreads(iteration)) scoreNeighbors[tid] = tmp;
+
         __syncthreads();
     }
 
@@ -176,13 +183,13 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
     CUDA_KERNEL_CHECK();
 
     CUDA_CHECK(cudaMemcpy(h_direction_tensor[0][0], d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t), cudaMemcpyDeviceToHost));
-    //CUDA_CHECK(cudaMemcpy(h_score_tensor[0][0], d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_score_tensor[0][0], d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_maxRow, d_maxRow, N*sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_maxCol, d_maxCol, N*sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_maxVal, d_maxVal, N*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
 
 
-    //writeMatrixToFile(h_score_tensor[0], S_LEN+1, S_LEN+1, "scoreMatrix.txt");
+    writeMatrixToFile(h_score_tensor[0], S_LEN+1, S_LEN+1, "scoreMatrix.txt");
     int maxRow, maxCol;
     for (int i = 0; i < N; i++)
     {
