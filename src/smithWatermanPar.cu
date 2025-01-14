@@ -40,9 +40,12 @@ __global__ void smithWatermanKernel(
     __shared__ u_int32_t maxValues[S_LEN];
     __shared__ int maxValuesx[S_LEN];
     __shared__ int maxValuesy[S_LEN];
+
+    __shared__ u_int32_t scoreNeighbors[S_LEN];
     if (tid < S_LEN)
     {
         maxValues[tid] = 0;
+        scoreNeighbors[tid] = 0;
     }
     __syncthreads();
 
@@ -56,9 +59,17 @@ __global__ void smithWatermanKernel(
             index = mapToElement(tid, iteration) + blockIdx.x * (S_LEN+1) * (S_LEN+1);
 
             upLeftNeighbor = d_score_tensor[getUpLeftNeighbor(index)];
-            leftNeighbor = d_score_tensor[getLeftNeighbor(index)];
-            upNeighbor = d_score_tensor[getUpNeighbor(index)];
 
+            if (iteration <= S_LEN)
+            {
+                upNeighbor = scoreNeighbors[tid];
+                leftNeighbor = d_score_tensor[getLeftNeighbor(index)];
+            }
+            else
+            {
+                upNeighbor = d_score_tensor[getUpNeighbor(index)];
+                leftNeighbor = scoreNeighbors[tid];
+            }
             
             //compute the algorithm given the neighbors
             comparison = ((d_query[getRow(tid, iteration) + S_LEN * blockIdx.x] == d_reference[getCol(tid, iteration) + S_LEN * blockIdx.x]) ? MATCH : MISMATCH);
@@ -79,6 +90,7 @@ __global__ void smithWatermanKernel(
                 d_direction_tensor[index] = 0;
             
             d_score_tensor[index] = tmp;
+            scoreNeighbors[tid] = tmp;
 
             if (tmp > maxValues[tid]) //store max value found by each thread and it's index
             if (tmp > maxValues[tid] || (tmp == maxValues[tid] && (getRow(tid, iteration) < maxValuesx[tid] || (getRow(tid, iteration) == maxValuesx[tid] && getCol(tid, iteration) < maxValuesy[tid])))) // Store max value found by each thread and its index
