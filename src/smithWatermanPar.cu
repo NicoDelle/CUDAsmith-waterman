@@ -28,8 +28,7 @@ __host__ void writeMatrixToFile(T** matrix, int rows, int cols, const char* file
 
 __global__ void smithWatermanKernel(
     char* d_query, 
-    char* d_reference, 
-    u_int32_t *d_score_tensor, 
+    char* d_reference,
     u_int16_t *d_direction_tensor,
     int *d_maxRow,
     int *d_maxCol,
@@ -110,7 +109,7 @@ __global__ void smithWatermanKernel(
             else
                 d_direction_tensor[index] = 0;
             
-            d_score_tensor[index] = tmp;
+            //d_score_tensor[index] = tmp;
             
 
             //store max value found by each thread and it's index
@@ -177,7 +176,7 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
     CUDA_CHECK(cudaMalloc(&d_query, N*S_LEN*sizeof(char))); // 512 KB
     CUDA_CHECK(cudaMalloc(&d_reference, N*S_LEN*sizeof(char))); // 512 KB
     //Tensors to store all score/direction matrices at once
-    CUDA_CHECK(cudaMalloc(&d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t))); // 1.052 GB
+    //CUDA_CHECK(cudaMalloc(&d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t))); // 1.052 GB
     CUDA_CHECK(cudaMalloc(&d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t))); // 263 MB -> tot 1.365 GB
 
     CUDA_CHECK(cudaMalloc(&d_maxRow, N*sizeof(int)));
@@ -187,7 +186,7 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
 
     CUDA_CHECK(cudaMemcpy(d_query, h_query[0], N*S_LEN*sizeof(char), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_reference, h_reference[0], N*S_LEN*sizeof(char), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemset(d_score_tensor, 0, N * (S_LEN + 1) * (S_LEN + 1) * sizeof(u_int32_t))); // problem if N > 1
+    //CUDA_CHECK(cudaMemset(d_score_tensor, 0, N * (S_LEN + 1) * (S_LEN + 1) * sizeof(u_int32_t))); // problem if N > 1
     CUDA_CHECK(cudaMemset(d_direction_tensor, 0, N * (S_LEN + 1) * (S_LEN + 1) * sizeof(u_int16_t)));
 
     dim3 threadsPerBlock(NUM_THREADS, 1, 1);
@@ -195,7 +194,6 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
     smithWatermanKernel<<<blocksPerGrid, threadsPerBlock>>>(
         d_query, 
         d_reference, 
-        d_score_tensor, 
         d_direction_tensor,
         d_maxRow,
         d_maxCol,
@@ -204,7 +202,7 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
     CUDA_KERNEL_CHECK();
 
     CUDA_CHECK(cudaMemcpy(h_direction_tensor[0][0], d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t), cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_score_tensor[0][0], d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
+    //CUDA_CHECK(cudaMemcpy(h_score_tensor[0][0], d_score_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_maxRow, d_maxRow, N*sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_maxCol, d_maxCol, N*sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_maxVal, d_maxVal, N*sizeof(u_int32_t), cudaMemcpyDeviceToHost));
