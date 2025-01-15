@@ -11,8 +11,8 @@ This is achieved by dedicating one block each, and launching 1000 blocks. The ef
 
 ### Second layer of parallelism
 Further parallelization is introduced within each block.
-Since the value of element <code>i,j</code> of the direction and score matrices depend only on values in position <code>i-1,j</code>, <code>i,j-1</code>, <code>i-1,j-1</code>, these matrices can be computed diagonally.
-The matrix is computed with <code>2*S_LEN=1024</code> iterations:
+Since the values of elements <code>i,j</code> of the direction and score matrices depend only on values in position <code>i-1,j</code>, <code>i,j-1</code>, <code>i-1,j-1</code>, these matrices can be computed diagonally.
+The matrix is computed in <code>2*S_LEN=1024</code> iterations:
 - The first row and column of the matrices are set to 0 and are used to provide room for the algorithm: the computation starts from the element in position <code>1,1</code>
 - During the first iteration, only one thread will be considered valid, and it will compute value <code>1,1</code>
 - During the second iteration, the now two valid threads will compute values <code>2,1</code> and <code>1,2</code>
@@ -20,6 +20,3 @@ The matrix is computed with <code>2*S_LEN=1024</code> iterations:
 
 The rest of the algorithm consists of retrieving the path for the best match, and is computed sequentially
 
-## Performance comparison
-With the settings discussed above, the parallel algorithm takes around 2.11 s on a GTX 1650 mobile GPU paired with a ryzen 5 5600H, while the sequential one takes approximately 4.01 seconds to compute.
-This means the parallel algorithm gives almost a 50% performance gain.
