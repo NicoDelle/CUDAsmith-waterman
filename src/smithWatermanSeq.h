@@ -5,4 +5,4 @@
 
 int __max4(int a, int b, int c, int d);
 void backtrace(u_int16_t *simple_rev_cigar, u_int16_t **dir_mat, int i, int j, int max_cigar_len);
-u_int16_t **smithWatermanSeq(char **query, char **reference, u_int16_t **cigar);
+void smithWatermanSeq(char **query, char **reference, u_int16_t **cigar);

@@ -45,7 +45,7 @@ __host__ void allocateMatrix(T**& matrix, int rows, int cols);
 template <typename T>
 __host__ void allocateTensor(T***& tensor, int depth, int rows, int cols);
 __host__ void backtraceP(u_int16_t *simple_rev_cigar, u_int16_t **dir_mat, int i, int j, int max_cigar_len);
-__host__ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **cigar);
+__host__ void smithWatermanPar(char **h_query, char **h_reference, u_int16_t **cigar);
 
 //device only functions
 

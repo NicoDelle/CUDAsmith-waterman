@@ -29,7 +29,7 @@ void backtrace(u_int16_t *simple_rev_cigar, u_int16_t **dir_mat, int i, int j, i
 	}
 }
 
-u_int16_t **smithWatermanSeq(char **query, char **reference, u_int16_t **cigar)
+void smithWatermanSeq(char **query, char **reference, u_int16_t **cigar)
 {
     int ins = -2, del = -2, match = 1, mismatch = -1; // penalties
     u_int32_t **sc_mat = (u_int32_t **) malloc((S_LEN + 1) * sizeof(u_int32_t *));
@@ -97,7 +97,19 @@ u_int16_t **smithWatermanSeq(char **query, char **reference, u_int16_t **cigar)
         }
         res[n] = sc_mat[maxi][maxj];//il miglior match finisce sempre nella cella con lo score più alto
         backtrace(cigar[n], dir_mat, maxi, maxj, S_LEN * 2);
-
     }
-    return dir_mat;
+    
+    // Free sc_mat
+    for (int i = 0; i < (S_LEN + 1); i++)
+    {
+        free(sc_mat[i]);
+    }
+    free(sc_mat);
+
+    // Free dir_mat
+    for (int i = 0; i < (S_LEN + 1); i++)
+    {
+        free(dir_mat[i]);
+    }
+    free(dir_mat);
 }

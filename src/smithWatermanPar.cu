@@ -57,19 +57,20 @@ __global__ void smithWatermanKernel(
             
             //compute the algorithm given the neighbors
             comparison = ((d_query[getRow(tid, iteration) + S_LEN * blockIdx.x] == d_reference[getCol(tid, iteration) + S_LEN * blockIdx.x]) ? MATCH : MISMATCH);
-            tmp = max4(
-                upLeftNeighbor + comparison, 
-                upNeighbor + DEL,
-                leftNeighbor + INS,
+            (u_int32_t) (tmp = max4(
+                (int64_t) upLeftNeighbor + comparison, 
+                (int64_t) upNeighbor + DEL,
+                (int64_t) leftNeighbor + INS,
                 0
-            );
+            ));
+            
 
             index = mapToElement(tid, iteration) + blockIdx.x * (S_LEN+1) * (S_LEN+1);
             if (tmp == (upLeftNeighbor + comparison))
                 d_direction_tensor[index] = (comparison == MATCH) ? 1 : 2;
-            else if (tmp == (upNeighbor + DEL))
+            else if ((int64_t) tmp == ((int64_t) upNeighbor + DEL))
                 d_direction_tensor[index] = 3;
-            else if (tmp == (leftNeighbor + INS))
+            else if ((int64_t) tmp == ((int64_t) leftNeighbor + INS))
                 d_direction_tensor[index] = 4;
             else
                 d_direction_tensor[index] = 0;            
@@ -112,7 +113,7 @@ __global__ void smithWatermanKernel(
     __syncthreads();
 }
 
-u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **cigar)
+void smithWatermanPar(char **h_query, char **h_reference, u_int16_t **cigar)
 {
     //Host pointers
     int h_maxRow[N];
@@ -152,7 +153,6 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
     CUDA_CHECK(cudaMemcpy(h_maxRow, d_maxRow, N*sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_maxCol, d_maxCol, N*sizeof(int), cudaMemcpyDeviceToHost));
 
-    int maxRow, maxCol;
     for (int i = 0; i < N; i++)
     {
         backtraceP(cigar[i], h_direction_tensor[i], h_maxRow[i], h_maxCol[i], S_LEN*2);
@@ -165,7 +165,10 @@ u_int16_t ***smithWatermanPar(char **h_query, char **h_reference, u_int16_t **ci
     cudaFree(d_maxRow);
     cudaFree(d_maxCol);
 
-    return h_direction_tensor;
+    delete[] h_direction_tensor[0][0];
+    delete[] h_direction_tensor[0];
+    delete[] h_direction_tensor;
+
 }
 
 template <typename T>
