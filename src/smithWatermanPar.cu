@@ -94,23 +94,28 @@ __global__ void smithWatermanKernel(
         __syncthreads();
     }
 
-    if (tid == 0)
-    {
-        u_int32_t max_val = 0;
-        int max_x = 513, max_y = 513;
-        for (int i = 0; i < S_LEN; i++)
-        {
-            if (maxValues[i] > max_val || (maxValues[i] == max_val && (maxValuesx[i] < max_x || (maxValuesx[i] == max_x && maxValuesy[i] < max_y))))
+   // Find the max element and its coordinates
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            if (maxValues[tid + stride] > maxValues[tid] ||
+                (maxValues[tid + stride] == maxValues[tid] && //it needs to be the max element nearest to the top-left corner
+                (maxValuesx[tid + stride] < maxValuesx[tid] ||
+                (maxValuesx[tid + stride] == maxValuesx[tid] &&
+                maxValuesy[tid + stride] < maxValuesy[tid]))))    
             {
-                max_val = maxValues[i];
-                max_x = maxValuesx[i];
-                max_y = maxValuesy[i];
+                maxValues[tid] = maxValues[tid + stride];
+                maxValuesx[tid] = maxValuesx[tid + stride];
+                maxValuesy[tid] = maxValuesy[tid + stride];
             }
         }
-        d_maxRow[blockIdx.x] = max_x + 1;
-        d_maxCol[blockIdx.x] = max_y + 1;
+        __syncthreads();
     }
-    __syncthreads();
+
+    // Write the result for this block to global memory
+    if (tid == 0) {
+        d_maxRow[blockIdx.x] = maxValuesx[0] + 1;
+        d_maxCol[blockIdx.x] = maxValuesy[0] + 1;
+    }
 }
 
 void smithWatermanPar(char **h_query, char **h_reference, u_int16_t **cigar)
