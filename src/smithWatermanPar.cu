@@ -4,8 +4,8 @@ __global__ void smithWatermanKernel(
     char* d_query, 
     char* d_reference,
     u_int16_t *d_direction_tensor,
-    int *d_maxRow,
-    int *d_maxCol
+    int *d_max_row,
+    int *d_max_col
     )
 {
     int tid = threadIdx.x;
@@ -113,8 +113,8 @@ __global__ void smithWatermanKernel(
 
     // Write the result for this block to global memory
     if (tid == 0) {
-        d_maxRow[blockIdx.x] = maxValuesx[0] + 1;
-        d_maxCol[blockIdx.x] = maxValuesy[0] + 1;
+        d_max_row[blockIdx.x] = maxValuesx[0] + 1;
+        d_max_col[blockIdx.x] = maxValuesy[0] + 1;
     }
 }
 
@@ -130,14 +130,14 @@ void smithWatermanPar(char **h_query, char **h_reference, u_int16_t **cigar)
     char *d_query;
     char *d_reference;
     u_int16_t *d_direction_tensor;
-    int *d_maxRow;
-    int *d_maxCol;
+    int *d_max_row;
+    int *d_max_col;
 
     CUDA_CHECK(cudaMalloc(&d_query, N*S_LEN*sizeof(char))); // 512 KB
     CUDA_CHECK(cudaMalloc(&d_reference, N*S_LEN*sizeof(char))); // 512 KB
     CUDA_CHECK(cudaMalloc(&d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t))); // 263 MB
-    CUDA_CHECK(cudaMalloc(&d_maxRow, N*sizeof(int))); //4 KB
-    CUDA_CHECK(cudaMalloc(&d_maxCol, N*sizeof(int))); //4 KB
+    CUDA_CHECK(cudaMalloc(&d_max_row, N*sizeof(int))); //4 KB
+    CUDA_CHECK(cudaMalloc(&d_max_col, N*sizeof(int))); //4 KB
 
     CUDA_CHECK(cudaMemcpy(d_query, h_query[0], N*S_LEN*sizeof(char), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_reference, h_reference[0], N*S_LEN*sizeof(char), cudaMemcpyHostToDevice));
@@ -149,14 +149,14 @@ void smithWatermanPar(char **h_query, char **h_reference, u_int16_t **cigar)
         d_query, 
         d_reference, 
         d_direction_tensor,
-        d_maxRow,
-        d_maxCol
+        d_max_row,
+        d_max_col
     );
     CUDA_KERNEL_CHECK();
 
     CUDA_CHECK(cudaMemcpy(h_direction_tensor[0][0], d_direction_tensor, N*(S_LEN+1)*(S_LEN+1)*sizeof(u_int16_t), cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_maxRow, d_maxRow, N*sizeof(int), cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_maxCol, d_maxCol, N*sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_maxRow, d_max_row, N*sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_maxCol, d_max_col, N*sizeof(int), cudaMemcpyDeviceToHost));
 
     for (int i = 0; i < N; i++)
     {
@@ -167,8 +167,8 @@ void smithWatermanPar(char **h_query, char **h_reference, u_int16_t **cigar)
     cudaFree(d_direction_tensor);
     cudaFree(d_query);
     cudaFree(d_reference);
-    cudaFree(d_maxRow);
-    cudaFree(d_maxCol);
+    cudaFree(d_max_row);
+    cudaFree(d_max_col);
 
     delete[] h_direction_tensor[0][0];
     delete[] h_direction_tensor[0];
