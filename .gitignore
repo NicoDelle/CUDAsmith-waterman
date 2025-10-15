@@ -14,5 +14,4 @@ cuda-repo-ubuntu2004-11-2-local_11.2.2-460.32.03-1_amd64.deb
 *.sqlite
 checkmatrix
 checkMax
-bfgs2.cu
-cavity02.mtx
+solver
