@@ -111,7 +111,7 @@ enum class Direction
     LEFT = 3
 };
 
-class SWsolver //TODO: make this class use shared pointers for the sequences
+class SWsolver //TODO: make this class use shared pointers for the sequences. TODO: use polymorphism to implement different backends (CPU, GPU, multi-threaded, etc.) -> easy to maintain
 {
 public:
     // Takes vectors as lvalues
