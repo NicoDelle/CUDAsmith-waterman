@@ -1,3 +1,11 @@
+# Current state of the project
+The project as assigned in the GPU101 course, was completed in January 2025.
+Right now, I am re-writing part of the code and extending the codebase, in order to learn the nuances of the C++ programming language.
+Here is a layout of what is going to change:
+- I am adding a unified interface to make use of this solver as a library (-> software design with C++)
+- I am going to implement a third possible backend for the solver, which makes use of multithreading (-> multithreading in C++)
+- I will consider optimizing the parallel algorithm further, upon reaching familiarity with C++
+
 # GPU 101 project: implementation of the smith-waterman algorithm in CUDA C
 This repository contains a sequential and a parallel implementation of the smith-waterman algorithm.
 The latter is meant to run on NVIDIA GPUs, and is written making use of the CUDA C framework.
